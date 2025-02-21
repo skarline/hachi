@@ -1,17 +1,27 @@
-class Bus {
+public class Bus {
     private var ram: [UInt8] = Array(repeating: 0, count: 2048)
     private var interruptVectors: [UInt8] = Array(repeating: 0, count: 6)
 
-    private var ppu: PPU?
-    private var apu: APU?
-    private var cartridge: Cartridge?
+    weak var cpu: CPU?
+    weak var ppu: PPU?
+    weak var apu: APU?
+    weak var cartridge: Cartridge?
+
+    private var clock: Int = 0
+
+    func connect(cpu: CPU) {
+        self.cpu = cpu
+        cpu.bus = self
+    }
 
     func connect(ppu: PPU) {
         self.ppu = ppu
+        ppu.bus = self
     }
 
     func connect(apu: APU) {
         self.apu = apu
+        apu.bus = self
     }
 
     func connect(cartridge: Cartridge) {
@@ -43,7 +53,7 @@ class Bus {
             return interruptVectors[Int(address - 0xFFFA)]
 
         case 0x8000...0xFFFF:
-            return cartridge?.read(at: address) ?? 0
+            return cartridge?.mapper.read(.cpu(address)) ?? 0
 
         default:
             return 0
@@ -74,7 +84,7 @@ class Bus {
             interruptVectors[Int(address - 0xFFFA)] = value
 
         case 0x8000...0xFFFF:
-            cartridge?.write(value, at: address)
+            cartridge?.mapper.write(.cpu(address), value)
 
         default:
             break
@@ -92,5 +102,15 @@ class Bus {
         let hi = UInt8(value >> 8)
         write(lo, at: address)
         write(hi, at: address + 1)
+    }
+
+    public func cycle() {
+        ppu?.clock()
+
+        if clock.isMultiple(of: 3) {
+            cpu?.clock()
+        }
+
+        clock += 1
     }
 }

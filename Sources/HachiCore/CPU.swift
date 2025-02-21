@@ -1,4 +1,4 @@
-class CPU {
+public class CPU {
     struct Registers {
         var a: UInt8 = 0
         var x: UInt8 = 0
@@ -130,12 +130,26 @@ class CPU {
         case relative(UInt8)
     }
 
+    var bus: Bus
+
     var registers = Registers()
     var status: StatusFlags = [.unused]
     var stackPointer: UInt8 = 0
     var programCounter: UInt16 = 0x8000
 
-    var bus = Bus()
+    var remainingCycles: Int = 0
+
+    #if DEBUG
+        init() {
+            self.bus = Bus()
+            self.bus.connect(cpu: self)
+        }
+    #endif
+
+    init(bus: Bus) {
+        self.bus = bus
+        self.bus.connect(cpu: self)
+    }
 
     // MARK: - Fetch
 
@@ -151,186 +165,186 @@ class CPU {
 
     // MARK: - Decode
 
-    func decode(_ opcode: UInt8) -> Instruction {
+    func decode(_ opcode: UInt8) -> (instruction: Instruction, cycles: Int) {
         switch opcode {
-        case 0xA9: .lda(.immediate(fetchByte()))
-        case 0xA5: .lda(.zeroPage(fetchByte()))
-        case 0xB5: .lda(.zeroPageX(fetchByte()))
-        case 0xAD: .lda(.absolute(fetchWord()))
-        case 0xBD: .lda(.absoluteX(fetchWord()))
-        case 0xB9: .lda(.absoluteY(fetchWord()))
-        case 0xA1: .lda(.indirectX(fetchByte()))
-        case 0xB1: .lda(.indirectY(fetchByte()))
+        case 0xA9: (.lda(.immediate(fetchByte())), 2)
+        case 0xA5: (.lda(.zeroPage(fetchByte())), 3)
+        case 0xB5: (.lda(.zeroPageX(fetchByte())), 4)
+        case 0xAD: (.lda(.absolute(fetchWord())), 4)
+        case 0xBD: (.lda(.absoluteX(fetchWord())), 4)
+        case 0xB9: (.lda(.absoluteY(fetchWord())), 4)
+        case 0xA1: (.lda(.indirectX(fetchByte())), 6)
+        case 0xB1: (.lda(.indirectY(fetchByte())), 5)
 
-        case 0xA2: .ldx(.immediate(fetchByte()))
-        case 0xA6: .ldx(.zeroPage(fetchByte()))
-        case 0xB6: .ldx(.zeroPageY(fetchByte()))
-        case 0xAE: .ldx(.absolute(fetchWord()))
-        case 0xBE: .ldx(.absoluteY(fetchWord()))
+        case 0xA2: (.ldx(.immediate(fetchByte())), 2)
+        case 0xA6: (.ldx(.zeroPage(fetchByte())), 3)
+        case 0xB6: (.ldx(.zeroPageY(fetchByte())), 4)
+        case 0xAE: (.ldx(.absolute(fetchWord())), 4)
+        case 0xBE: (.ldx(.absoluteY(fetchWord())), 4)
 
-        case 0xA0: .ldy(.immediate(fetchByte()))
-        case 0xA4: .ldy(.zeroPage(fetchByte()))
-        case 0xB4: .ldy(.zeroPageX(fetchByte()))
-        case 0xAC: .ldy(.absolute(fetchWord()))
-        case 0xBC: .ldy(.absoluteX(fetchWord()))
+        case 0xA0: (.ldy(.immediate(fetchByte())), 2)
+        case 0xA4: (.ldy(.zeroPage(fetchByte())), 3)
+        case 0xB4: (.ldy(.zeroPageX(fetchByte())), 4)
+        case 0xAC: (.ldy(.absolute(fetchWord())), 4)
+        case 0xBC: (.ldy(.absoluteX(fetchWord())), 4)
 
-        case 0x85: .sta(.zeroPage(fetchByte()))
-        case 0x95: .sta(.zeroPageX(fetchByte()))
-        case 0x8D: .sta(.absolute(fetchWord()))
-        case 0x9D: .sta(.absoluteX(fetchWord()))
-        case 0x99: .sta(.absoluteY(fetchWord()))
-        case 0x81: .sta(.indirectX(fetchByte()))
-        case 0x91: .sta(.indirectY(fetchByte()))
+        case 0x85: (.sta(.zeroPage(fetchByte())), 3)
+        case 0x95: (.sta(.zeroPageX(fetchByte())), 4)
+        case 0x8D: (.sta(.absolute(fetchWord())), 4)
+        case 0x9D: (.sta(.absoluteX(fetchWord())), 5)
+        case 0x99: (.sta(.absoluteY(fetchWord())), 5)
+        case 0x81: (.sta(.indirectX(fetchByte())), 6)
+        case 0x91: (.sta(.indirectY(fetchByte())), 6)
 
-        case 0x86: .stx(.zeroPage(fetchByte()))
-        case 0x96: .stx(.zeroPageY(fetchByte()))
-        case 0x8E: .stx(.absolute(fetchWord()))
+        case 0x86: (.stx(.zeroPage(fetchByte())), 3)
+        case 0x96: (.stx(.zeroPageY(fetchByte())), 4)
+        case 0x8E: (.stx(.absolute(fetchWord())), 4)
 
-        case 0x84: .sty(.zeroPage(fetchByte()))
-        case 0x94: .sty(.zeroPageX(fetchByte()))
-        case 0x8C: .sty(.absolute(fetchWord()))
+        case 0x84: (.sty(.zeroPage(fetchByte())), 3)
+        case 0x94: (.sty(.zeroPageX(fetchByte())), 4)
+        case 0x8C: (.sty(.absolute(fetchWord())), 4)
 
-        case 0xAA: .tax
-        case 0x8A: .txa
-        case 0xA8: .tay
-        case 0x98: .tya
-        case 0xBA: .tsx
-        case 0x9A: .txs
+        case 0xAA: (.tax, 2)
+        case 0x8A: (.txa, 2)
+        case 0xA8: (.tay, 2)
+        case 0x98: (.tya, 2)
+        case 0xBA: (.tsx, 2)
+        case 0x9A: (.txs, 2)
 
-        case 0x69: .adc(.immediate(fetchByte()))
-        case 0x65: .adc(.zeroPage(fetchByte()))
-        case 0x75: .adc(.zeroPageX(fetchByte()))
-        case 0x6D: .adc(.absolute(fetchWord()))
-        case 0x7D: .adc(.absoluteX(fetchWord()))
-        case 0x79: .adc(.absoluteY(fetchWord()))
-        case 0x61: .adc(.indirectX(fetchByte()))
-        case 0x71: .adc(.indirectY(fetchByte()))
+        case 0x69: (.adc(.immediate(fetchByte())), 2)
+        case 0x65: (.adc(.zeroPage(fetchByte())), 3)
+        case 0x75: (.adc(.zeroPageX(fetchByte())), 4)
+        case 0x6D: (.adc(.absolute(fetchWord())), 4)
+        case 0x7D: (.adc(.absoluteX(fetchWord())), 4)
+        case 0x79: (.adc(.absoluteY(fetchWord())), 4)
+        case 0x61: (.adc(.indirectX(fetchByte())), 6)
+        case 0x71: (.adc(.indirectY(fetchByte())), 5)
 
-        case 0xE9: .sbc(.immediate(fetchByte()))
-        case 0xE5: .sbc(.zeroPage(fetchByte()))
-        case 0xF5: .sbc(.zeroPageX(fetchByte()))
-        case 0xED: .sbc(.absolute(fetchWord()))
-        case 0xFD: .sbc(.absoluteX(fetchWord()))
-        case 0xF9: .sbc(.absoluteY(fetchWord()))
-        case 0xE1: .sbc(.indirectX(fetchByte()))
-        case 0xF1: .sbc(.indirectY(fetchByte()))
+        case 0xE9: (.sbc(.immediate(fetchByte())), 2)
+        case 0xE5: (.sbc(.zeroPage(fetchByte())), 3)
+        case 0xF5: (.sbc(.zeroPageX(fetchByte())), 4)
+        case 0xED: (.sbc(.absolute(fetchWord())), 4)
+        case 0xFD: (.sbc(.absoluteX(fetchWord())), 4)
+        case 0xF9: (.sbc(.absoluteY(fetchWord())), 4)
+        case 0xE1: (.sbc(.indirectX(fetchByte())), 6)
+        case 0xF1: (.sbc(.indirectY(fetchByte())), 5)
 
-        case 0xE6: .inc(.zeroPage(fetchByte()))
-        case 0xF6: .inc(.zeroPageX(fetchByte()))
-        case 0xEE: .inc(.absolute(fetchWord()))
-        case 0xFE: .inc(.absoluteX(fetchWord()))
+        case 0xE6: (.inc(.zeroPage(fetchByte())), 5)
+        case 0xF6: (.inc(.zeroPageX(fetchByte())), 6)
+        case 0xEE: (.inc(.absolute(fetchWord())), 6)
+        case 0xFE: (.inc(.absoluteX(fetchWord())), 7)
 
-        case 0xC6: .dec(.zeroPage(fetchByte()))
-        case 0xD6: .dec(.zeroPageX(fetchByte()))
-        case 0xCE: .dec(.absolute(fetchWord()))
-        case 0xDE: .dec(.absoluteX(fetchWord()))
+        case 0xC6: (.dec(.zeroPage(fetchByte())), 5)
+        case 0xD6: (.dec(.zeroPageX(fetchByte())), 6)
+        case 0xCE: (.dec(.absolute(fetchWord())), 6)
+        case 0xDE: (.dec(.absoluteX(fetchWord())), 7)
 
-        case 0xE8: .inx
-        case 0xC8: .iny
-        case 0xCA: .dex
-        case 0x88: .dey
+        case 0xE8: (.inx, 2)
+        case 0xC8: (.iny, 2)
+        case 0xCA: (.dex, 2)
+        case 0x88: (.dey, 2)
 
-        case 0x0A: .asl(.accumulator)
-        case 0x06: .asl(.zeroPage(fetchByte()))
-        case 0x16: .asl(.zeroPageX(fetchByte()))
-        case 0x0E: .asl(.absolute(fetchWord()))
-        case 0x1E: .asl(.absoluteX(fetchWord()))
+        case 0x0A: (.asl(.accumulator), 2)
+        case 0x06: (.asl(.zeroPage(fetchByte())), 5)
+        case 0x16: (.asl(.zeroPageX(fetchByte())), 6)
+        case 0x0E: (.asl(.absolute(fetchWord())), 6)
+        case 0x1E: (.asl(.absoluteX(fetchWord())), 7)
 
-        case 0x4A: .lsr(.accumulator)
-        case 0x46: .lsr(.zeroPage(fetchByte()))
-        case 0x56: .lsr(.zeroPageX(fetchByte()))
-        case 0x4E: .lsr(.absolute(fetchWord()))
-        case 0x5E: .lsr(.absoluteX(fetchWord()))
+        case 0x4A: (.lsr(.accumulator), 2)
+        case 0x46: (.lsr(.zeroPage(fetchByte())), 5)
+        case 0x56: (.lsr(.zeroPageX(fetchByte())), 6)
+        case 0x4E: (.lsr(.absolute(fetchWord())), 6)
+        case 0x5E: (.lsr(.absoluteX(fetchWord())), 7)
 
-        case 0x2A: .rol(.accumulator)
-        case 0x26: .rol(.zeroPage(fetchByte()))
-        case 0x36: .rol(.zeroPageX(fetchByte()))
-        case 0x2E: .rol(.absolute(fetchWord()))
-        case 0x3E: .rol(.absoluteX(fetchWord()))
+        case 0x2A: (.rol(.accumulator), 2)
+        case 0x26: (.rol(.zeroPage(fetchByte())), 5)
+        case 0x36: (.rol(.zeroPageX(fetchByte())), 6)
+        case 0x2E: (.rol(.absolute(fetchWord())), 6)
+        case 0x3E: (.rol(.absoluteX(fetchWord())), 7)
 
-        case 0x6A: .ror(.accumulator)
-        case 0x66: .ror(.zeroPage(fetchByte()))
-        case 0x76: .ror(.zeroPageX(fetchByte()))
-        case 0x6E: .ror(.absolute(fetchWord()))
-        case 0x7E: .ror(.absoluteX(fetchWord()))
+        case 0x6A: (.ror(.accumulator), 2)
+        case 0x66: (.ror(.zeroPage(fetchByte())), 5)
+        case 0x76: (.ror(.zeroPageX(fetchByte())), 6)
+        case 0x6E: (.ror(.absolute(fetchWord())), 6)
+        case 0x7E: (.ror(.absoluteX(fetchWord())), 7)
 
-        case 0x29: .and(.immediate(fetchByte()))
-        case 0x25: .and(.zeroPage(fetchByte()))
-        case 0x35: .and(.zeroPageX(fetchByte()))
-        case 0x2D: .and(.absolute(fetchWord()))
-        case 0x3D: .and(.absoluteX(fetchWord()))
-        case 0x39: .and(.absoluteY(fetchWord()))
-        case 0x21: .and(.indirectX(fetchByte()))
-        case 0x31: .and(.indirectY(fetchByte()))
+        case 0x29: (.and(.immediate(fetchByte())), 2)
+        case 0x25: (.and(.zeroPage(fetchByte())), 3)
+        case 0x35: (.and(.zeroPageX(fetchByte())), 4)
+        case 0x2D: (.and(.absolute(fetchWord())), 4)
+        case 0x3D: (.and(.absoluteX(fetchWord())), 4)
+        case 0x39: (.and(.absoluteY(fetchWord())), 4)
+        case 0x21: (.and(.indirectX(fetchByte())), 6)
+        case 0x31: (.and(.indirectY(fetchByte())), 5)
 
-        case 0x09: .ora(.immediate(fetchByte()))
-        case 0x05: .ora(.zeroPage(fetchByte()))
-        case 0x15: .ora(.zeroPageX(fetchByte()))
-        case 0x0D: .ora(.absolute(fetchWord()))
-        case 0x1D: .ora(.absoluteX(fetchWord()))
-        case 0x19: .ora(.absoluteY(fetchWord()))
-        case 0x01: .ora(.indirectX(fetchByte()))
-        case 0x11: .ora(.indirectY(fetchByte()))
+        case 0x09: (.ora(.immediate(fetchByte())), 2)
+        case 0x05: (.ora(.zeroPage(fetchByte())), 3)
+        case 0x15: (.ora(.zeroPageX(fetchByte())), 4)
+        case 0x0D: (.ora(.absolute(fetchWord())), 4)
+        case 0x1D: (.ora(.absoluteX(fetchWord())), 4)
+        case 0x19: (.ora(.absoluteY(fetchWord())), 4)
+        case 0x01: (.ora(.indirectX(fetchByte())), 6)
+        case 0x11: (.ora(.indirectY(fetchByte())), 5)
 
-        case 0x49: .eor(.immediate(fetchByte()))
-        case 0x45: .eor(.zeroPage(fetchByte()))
-        case 0x55: .eor(.zeroPageX(fetchByte()))
-        case 0x4D: .eor(.absolute(fetchWord()))
-        case 0x5D: .eor(.absoluteX(fetchWord()))
-        case 0x59: .eor(.absoluteY(fetchWord()))
-        case 0x41: .eor(.indirectX(fetchByte()))
-        case 0x51: .eor(.indirectY(fetchByte()))
+        case 0x49: (.eor(.immediate(fetchByte())), 2)
+        case 0x45: (.eor(.zeroPage(fetchByte())), 3)
+        case 0x55: (.eor(.zeroPageX(fetchByte())), 4)
+        case 0x4D: (.eor(.absolute(fetchWord())), 4)
+        case 0x5D: (.eor(.absoluteX(fetchWord())), 4)
+        case 0x59: (.eor(.absoluteY(fetchWord())), 4)
+        case 0x41: (.eor(.indirectX(fetchByte())), 6)
+        case 0x51: (.eor(.indirectY(fetchByte())), 5)
 
-        case 0x24: .bit(.zeroPage(fetchByte()))
-        case 0x2C: .bit(.absolute(fetchWord()))
+        case 0x24: (.bit(.zeroPage(fetchByte())), 3)
+        case 0x2C: (.bit(.absolute(fetchWord())), 4)
 
-        case 0xC9: .cmp(.immediate(fetchByte()))
-        case 0xC5: .cmp(.zeroPage(fetchByte()))
-        case 0xD5: .cmp(.zeroPageX(fetchByte()))
-        case 0xCD: .cmp(.absolute(fetchWord()))
-        case 0xDD: .cmp(.absoluteX(fetchWord()))
-        case 0xD9: .cmp(.absoluteY(fetchWord()))
-        case 0xC1: .cmp(.indirectX(fetchByte()))
-        case 0xD1: .cmp(.indirectY(fetchByte()))
+        case 0xC9: (.cmp(.immediate(fetchByte())), 2)
+        case 0xC5: (.cmp(.zeroPage(fetchByte())), 3)
+        case 0xD5: (.cmp(.zeroPageX(fetchByte())), 4)
+        case 0xCD: (.cmp(.absolute(fetchWord())), 4)
+        case 0xDD: (.cmp(.absoluteX(fetchWord())), 4)
+        case 0xD9: (.cmp(.absoluteY(fetchWord())), 4)
+        case 0xC1: (.cmp(.indirectX(fetchByte())), 6)
+        case 0xD1: (.cmp(.indirectY(fetchByte())), 5)
 
-        case 0xE0: .cpx(.immediate(fetchByte()))
-        case 0xE4: .cpx(.zeroPage(fetchByte()))
-        case 0xEC: .cpx(.absolute(fetchWord()))
+        case 0xE0: (.cpx(.immediate(fetchByte())), 2)
+        case 0xE4: (.cpx(.zeroPage(fetchByte())), 3)
+        case 0xEC: (.cpx(.absolute(fetchWord())), 4)
 
-        case 0xC0: .cpy(.immediate(fetchByte()))
-        case 0xC4: .cpy(.zeroPage(fetchByte()))
-        case 0xCC: .cpy(.absolute(fetchWord()))
+        case 0xC0: (.cpy(.immediate(fetchByte())), 2)
+        case 0xC4: (.cpy(.zeroPage(fetchByte())), 3)
+        case 0xCC: (.cpy(.absolute(fetchWord())), 4)
 
-        case 0x90: .bcc(.relative(fetchByte()))
-        case 0xB0: .bcs(.relative(fetchByte()))
-        case 0xF0: .beq(.relative(fetchByte()))
-        case 0x30: .bmi(.relative(fetchByte()))
-        case 0xD0: .bne(.relative(fetchByte()))
-        case 0x10: .bpl(.relative(fetchByte()))
-        case 0x50: .bvc(.relative(fetchByte()))
-        case 0x70: .bvs(.relative(fetchByte()))
+        case 0x90: (.bcc(.relative(fetchByte())), 2)
+        case 0xB0: (.bcs(.relative(fetchByte())), 2)
+        case 0xF0: (.beq(.relative(fetchByte())), 2)
+        case 0x30: (.bmi(.relative(fetchByte())), 2)
+        case 0xD0: (.bne(.relative(fetchByte())), 2)
+        case 0x10: (.bpl(.relative(fetchByte())), 2)
+        case 0x50: (.bvc(.relative(fetchByte())), 2)
+        case 0x70: (.bvs(.relative(fetchByte())), 2)
 
-        case 0x4C: .jmp(.absolute(fetchWord()))
-        case 0x6C: .jmp(.indirect(fetchWord()))
-        case 0x20: .jsr(.absolute(fetchWord()))
-        case 0x60: .rts
-        case 0x00: .brk
-        case 0x40: .rti
+        case 0x4C: (.jmp(.absolute(fetchWord())), 3)
+        case 0x6C: (.jmp(.indirect(fetchWord())), 5)
+        case 0x20: (.jsr(.absolute(fetchWord())), 6)
+        case 0x60: (.rts, 6)
+        case 0x00: (.brk, 7)
+        case 0x40: (.rti, 6)
 
-        case 0x48: .pha
-        case 0x08: .php
-        case 0x68: .pla
-        case 0x28: .plp
+        case 0x48: (.pha, 3)
+        case 0x08: (.php, 3)
+        case 0x68: (.pla, 4)
+        case 0x28: (.plp, 4)
 
-        case 0x18: .clc
-        case 0xD8: .cld
-        case 0x58: .cli
-        case 0xB8: .clv
-        case 0x38: .sec
-        case 0xF8: .sed
-        case 0x78: .sei
+        case 0x18: (.clc, 2)
+        case 0xD8: (.cld, 2)
+        case 0x58: (.cli, 2)
+        case 0xB8: (.clv, 2)
+        case 0x38: (.sec, 2)
+        case 0xF8: (.sed, 2)
+        case 0x78: (.sei, 2)
 
-        case 0xEA: .nop
+        case 0xEA: (.nop, 2)
 
         default: fatalError("Illegal opcode: \(String(opcode, radix: 16, uppercase: true))")
         }
@@ -352,11 +366,19 @@ class CPU {
         case .absolute(let address):
             return address
 
-        case .absoluteX(let address):
-            return UInt16(address) &+ UInt16(registers.x)
+        case .absoluteX(let base):
+            let address = base &+ UInt16(registers.x)
+            if (base & 0xFF00) != (address & 0xFF00) {
+                remainingCycles += 1
+            }
+            return address
 
-        case .absoluteY(let address):
-            return UInt16(address) &+ UInt16(registers.y)
+        case .absoluteY(let base):
+            let address = base &+ UInt16(registers.y)
+            if (base & 0xFF00) != (address & 0xFF00) {
+                remainingCycles += 1
+            }
+            return address
 
         case .indirect(let address):
             // Handle the page boundary bug:
@@ -369,10 +391,20 @@ class CPU {
             return bus.readWord(at: address &+ registers.x)
 
         case .indirectY(let address):
-            return bus.readWord(at: address) &+ UInt16(registers.y)
+            let base = bus.readWord(at: address)
+            let address = base &+ UInt16(registers.y)
+            if (base & 0xFF00) != (address & 0xFF00) {
+                remainingCycles += 1
+            }
+            return address
 
         case .relative(let offset):
-            return programCounter &+ UInt16(bitPattern: Int16(Int8(bitPattern: offset)))
+            let base = programCounter
+            let address = base &+ UInt16(bitPattern: Int16(Int8(bitPattern: offset)))
+            if (base & 0xFF00) != (address & 0xFF00) {
+                remainingCycles += 1
+            }
+            return address
 
         default:
             fatalError("Illegal addressing for \(String(describing: mode))")
@@ -422,6 +454,11 @@ class CPU {
         let lo = pullStackByte()
         let hi = pullStackByte()
         return UInt16(hi) << 8 | UInt16(lo)
+    }
+
+    private func branch(to address: UInt16) {
+        remainingCycles += 1
+        programCounter = address
     }
 
     func execute(_ instruction: Instruction) {
@@ -609,42 +646,42 @@ class CPU {
 
         case .bcc(let mode):
             if !status.contains(.carry) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bcs(let mode):
             if status.contains(.carry) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .beq(let mode):
             if status.contains(.zero) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bmi(let mode):
             if status.contains(.negative) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bne(let mode):
             if !status.contains(.zero) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bpl(let mode):
             if !status.contains(.negative) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bvc(let mode):
             if !status.contains(.overflow) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .bvs(let mode):
             if status.contains(.overflow) {
-                programCounter = address(for: mode)
+                branch(to: address(for: mode))
             }
 
         case .jmp(let mode):
@@ -706,9 +743,17 @@ class CPU {
         }
     }
 
-    func execute() {
-        let opcode = fetchByte()
-        let instruction = decode(opcode)
-        execute(instruction)
+    func clock() {
+        print("CPU: Remaining cycles: \(remainingCycles)")
+
+        if remainingCycles == 0 {
+            let opcode = fetchByte()
+            let (instruction, cycles) = decode(opcode)
+            print("CPU: Instruction: \(instruction), Cycles: \(cycles)")
+            execute(instruction)
+            remainingCycles += cycles
+        }
+
+        remainingCycles -= 1
     }
 }

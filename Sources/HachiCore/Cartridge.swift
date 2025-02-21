@@ -3,14 +3,16 @@ import Foundation
 enum CartridgeError: Error {
     case invalidHeader
     case invalidMagic
+    case invalidMapper
     case incompleteROM
     case unknownFormat
 }
 
 class Cartridge {
-    let prgROM: Data
-    let chrROM: Data
-    let mapper: Int
+    private let prg: Data
+    private let chr: Data
+
+    let mapper: Mapper
 
     init(data: Data) throws {
         guard data.count >= 16 else {
@@ -42,30 +44,14 @@ class Cartridge {
             throw CartridgeError.incompleteROM
         }
 
-        self.prgROM = data.subdata(in: offset..<offset + prgBytes)
-        self.chrROM = data.subdata(in: offset + prgBytes..<offset + prgBytes + chrBytes)
-        self.mapper = mapperNumber
-    }
+        self.prg = data.subdata(in: offset..<offset + prgBytes)
+        self.chr = data.subdata(in: offset + prgBytes..<offset + prgBytes + chrBytes)
 
-    func read(at address: UInt16) -> UInt8 {
-        switch address {
-        case 0x8000...0xFFFF:
-            let prgSize = prgROM.count
-            let prgAddress = Int(address - 0x8000)
-
-            let mirroredAddress = prgSize == 0x4000 ? prgAddress & 0x3FFF : prgAddress
-            guard mirroredAddress < prgSize else { return 0 }
-            return prgROM[mirroredAddress]
-
-        case 0x0000...0x1FFF:
-            let chrAddress = Int(address)
-            guard chrAddress < chrROM.count else { return 0 }
-            return chrROM[chrAddress]
-
+        switch mapperNumber {
+        case 0:
+            self.mapper = Mapper000(prg: self.prg, chr: self.chr)
         default:
-            return 0
+            throw CartridgeError.invalidMapper
         }
     }
-
-    func write(_ value: UInt8, at address: UInt16) {}
 }
